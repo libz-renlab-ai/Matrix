@@ -35,46 +35,21 @@ block.
 - Normal new rule ingestion should not require the user to run `migrate-v6` or
   `migrate-v7` manually.
 
-## FIXEDFLOW and SessionStart Banner
+## 工作流(Workflow)
 
-The current docs-first FIXEDFLOW issue chain and the Chinese SessionStart
-banner copy are sourced from:
+本项目从 issue 到 release 的唯一权威工作流:
 
-- **Banner copy + gate contract + hard rules** (single source of truth for the
-  three user-facing capabilities + `grill-ready` / `docs-grill-ready` gate
-  semantics): [`../specs/2026-05-11-fixedflow-sessionstart-banner.zh.md`](../specs/2026-05-11-fixedflow-sessionstart-banner.zh.md).
-- **5+1 step workflow** (issue → `/grill-via-web` → `/grill-with-docs` → both
-  labels → `/fixed-flow-driver` → `/review` fix loop → PR → squash merge):
-  [`../FIXEDFLOW.md`](../FIXEDFLOW.md).
-- **Claim-time gate** (both labels required before explore / plan / driver):
-  [`../HOW-TO-CLAIM-ISSUE.md`](../HOW-TO-CLAIM-ISSUE.md).
-- **Save grilled comments to ADR** (where `/grill-with-docs` persists the grill
-  decisions): [`../adr/0014-save-grilled-comments-to-adr.md`](../adr/0014-save-grilled-comments-to-adr.md)
-  plus per-issue siblings under `../adr/0014/`.
+- **完整工作流**(issue → 挖方案 → 执行 → 本地 review → PR → 远程 review →
+  合并 → 每 6h release):[`../WORKFLOW.md`](../WORKFLOW.md)。
+- **认领锁**(grill 锁 / 执行锁:上锁 / 释放 / 查状态 / 24h 自动撤):
+  [`../CLAIM-LOCK.md`](../CLAIM-LOCK.md)。
 
-There is no watcher, cron, daemon, background dispatcher, or repo-wide
-scanner. Implementation only proceeds after both `grill-ready` and
-`docs-grill-ready` are set, and the driver is always invoked manually by a
-maintainer in Claude Code.
+`WORKFLOW.md` 取代了旧的 FIXEDFLOW / Symphony / 双 driver 整套机制
+(见 `WORKFLOW.md` 文末「本文档取代了什么」)。
 
-## Product Features and Landing Copy
+## Product Features
 
-When asked about product features, route by scope:
+When asked about product features:
 
-- **All 49 verified features** (full inventory, including for CEO/VC deck use):
+- **All verified features** (full inventory, including for CEO/VC deck use):
   [`../PRODUCT-FEATURES.md`](../PRODUCT-FEATURES.md).
-- **Features actually needed for the 30-second landing copy** (which subset of
-  the 49 to surface, plus which features must still be built so the landing
-  hook converts):
-  [`../specs/2026-05-07-landing-copy-actually-needed.md`](../specs/2026-05-07-landing-copy-actually-needed.md).
-  This spec answers questions like *"what product features are actually needed
-  for this repo?"* — surfacing 8 of 49 existing features and identifying 6 new
-  features (N1 universal pack / N2 stack packs / N3 pack CLI / N4 two-stage
-  install / N5 install.sh / N6 `teamagent demo`), tracked as GitHub issues
-  [#88–#93](https://github.com/libz-renlab-ai/TeamBrain/issues?q=is%3Aissue+88+89+90+91+92+93).
-  It also seals 11 grill decisions (hero phrasing, GIF content, install
-  flow, pack granularity, trust anchor placement, pricing signal, etc.) and
-  cross-references three ADRs:
-  - [`../adr/0001-two-stage-install.md`](../adr/0001-two-stage-install.md)
-  - [`../adr/0002-stack-detection-via-coding-agent.md`](../adr/0002-stack-detection-via-coding-agent.md)
-  - [`../adr/0003-demo-dual-mode.md`](../adr/0003-demo-dual-mode.md)

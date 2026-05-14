@@ -11,7 +11,11 @@
 
 # ADR-0015 — Symphony-driven autonomous dispatch replaces manual FIXEDFLOW
 
-**Status**: accepted (2026-05-14). Implementation lives in fork
+> **⚠️ 已被取代(2026-05-14)**:本 ADR 记录的「Symphony 取代 FIXEDFLOW」决策已被反转。
+> `docs/WORKFLOW.md` 现在是唯一权威工作流,**同时取代了 FIXEDFLOW 和 Symphony**。
+> 本文件仅作历史记录保留。
+
+**Status**: superseded (2026-05-14) by `docs/WORKFLOW.md` — originally accepted (2026-05-14). Implementation lives in fork
 [`LiuShiyuMath/symphony#claude-multi-provider`](https://github.com/LiuShiyuMath/symphony/tree/claude-multi-provider).
 Phase 1 (this PR) lands docs only; Phase 2 (operational cutover +
 root `CLAUDE.md` rewrite) is a follow-up.
