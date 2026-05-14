@@ -1,0 +1,31 @@
+name: Lock Sweeper
+
+# 24h 自动撤锁 —— 认领锁工作流里唯一必须是代码的环节。
+# 每小时扫描挂着 lock:grill / lock:exec label 的 open issue,撤除过期锁。
+# 逻辑见 scripts/lock-sweep.ts;锁的认领/释放/查状态走 docs/CLAIM-LOCK.md。
+
+on:
+  schedule:
+    - cron: '37 * * * *'   # 每小时一次,避开 :00 整点
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Sweep expired locks
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm tsx scripts/lock-sweep.ts

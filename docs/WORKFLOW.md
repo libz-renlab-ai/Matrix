@@ -41,7 +41,7 @@ FIXEDFLOW / Symphony / 双 driver 那一整套(见文末「本文档取代了什
 - **怎么挖**:用 `grill-me` skill —— CC 反复深入对话,把 issue 里每一处模糊、歧义、多解的地方逐一逼问、定夺,直到方案**完整、无悬而未决的分支**。
 - **产出**:把完整方案贴到该 issue 的评论区。
 - **锁释放**:方案贴入评论区即释放;或上锁满 **24h 仍未贴** → 锁自动撤,issue 重新开放。
-- 参考:`docs/PRE-GRILL-CLAIM.md`(认领/锁的语义)。
+- 参考:`docs/CLAIM-LOCK.md`(认领锁:上锁 / 释放 / 查状态 / 24h 自动撤的完整流程)。
 
 ### 3 · 执行方案(产出:代码 + 两套验证)
 - **谁**:任何人的任何 CC —— **可以不是第 2 步想方案的人**(方案在评论区是公开的)。
@@ -49,7 +49,7 @@ FIXEDFLOW / Symphony / 双 driver 那一整套(见文末「本文档取代了什
 - **在哪干**:独立 git worktree + feature 分支,**绝不直接碰主干**。
 - **干什么**:实现 issue 的方案 + 写下方「两套验证」。
 - **锁释放**:做完(代码 + 两套验证 + 本地 review 通过)即释放;或上锁满 **24h 仍未完成** → 锁自动撤。
-- 参考:`docs/PRE-IMPLEMENT-CLAIM.md`、`docs/HOW-TO-CLAIM-ISSUE.md`。
+- 参考:`docs/CLAIM-LOCK.md`(认领锁:上锁 / 释放 / 查状态 / 24h 自动撤的完整流程)。
 
 ### 两套验证(每次提交代码强制带齐)
 
@@ -121,7 +121,7 @@ FIXEDFLOW / Symphony / 双 driver 那一整套(见文末「本文档取代了什
 | 套件 2 HTML 报告生成 | ⚠️ 待搭 —— 需要一个把 GIF + 截图 + 结论拼成严谨 HTML 的生成器 |
 | 本地 review(独立 subagent + 打回循环) | ⚠️ 待搭 —— 需要 review subagent、把「2 条标准」做成可自动跑的检查、以及「不通过打回重做」的循环 |
 | 远程 CC 自动评审 | ❌ 待搭 —— 旧的云端评审 bot 已删,需重建 |
-| 两把锁 + 24h 自动撤锁 | ❌ 待定 —— 需要定具体机制(GitHub 标签 / assignee / 其他)并实现自动撤锁 |
+| 两把锁 + 24h 自动撤锁 | ✅ 已搭 —— `lock:grill` / `lock:exec` 两个 label 当锁,认领/释放/查状态走文档(`docs/CLAIM-LOCK.md`),24h 自动撤锁由 `scripts/lock-sweep.ts` + `.github/workflows/lock-sweeper.yml` 每小时跑;纯逻辑 `scripts/lock-core.ts` 有单测 |
 | 个人开发分支 → 主分支 自动合 | ❌ 待搭 |
 | 每 6 小时 release | ⚠️ 待改 —— 现有 `release-branch.yml` 是「每次 push main 就发」,需改成 6 小时定时 |
 
@@ -136,7 +136,7 @@ FIXEDFLOW / Symphony / 双 driver 那一整套(见文末「本文档取代了什
 
 ## 相关文档(本工作流复用的子文档)
 
-- 锁 / 认领:`PRE-GRILL-CLAIM.md`、`PRE-IMPLEMENT-CLAIM.md`、`HOW-TO-CLAIM-ISSUE.md`
+- 锁 / 认领:`CLAIM-LOCK.md`
 - 验证套件 1:`PLAN-RESEARCH-REPORT.md`
 - 验证套件 2:`VISUAL-PROOF-PR.md`、`VISUAL-PROOF-FORMAT.md`、`VISUAL-PROOF-CONTENT.md`、`VISUAL-PROOF-HUMAN-MERGE.md`
 - review:`POSTPR.md`、`adr/0007-local-review-skill-as-review-gate.md`

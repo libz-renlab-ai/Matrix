@@ -2,19 +2,23 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   formatClaimComment,
+  formatUnlockComment,
   parseClaimComment,
-  determineLockState,
+  parseUnlockMarker,
   isLockExpired,
-  decideClaimOutcome,
-  type IssueSnapshot,
+  holdingClaim,
+  lockLabel,
+  type LockKind,
 } from "./lock-core.ts";
 
-const snap = (labels: string[], comments: string[]): IssueSnapshot => ({
-  labels,
-  comments: comments.map((body) => ({ body })),
+const claim = (kind: LockKind, claimer: string, at: string) => ({
+  body: formatClaimComment(kind, claimer, at),
+});
+const unlock = (kind: LockKind, claimer: string) => ({
+  body: formatUnlockComment(kind, claimer),
 });
 
-// --- Task 1: parse / format ---
+// --- format / parse ---
 
 test("formatClaimComment 产出可被 parseClaimComment 还原的块", () => {
   const body = formatClaimComment("grill", "alice@h1/s1", "2026-05-14T08:30:00Z");
@@ -26,9 +30,20 @@ test("formatClaimComment 产出可被 parseClaimComment 还原的块", () => {
   });
 });
 
+test("formatUnlockComment 产出可被 parseUnlockMarker 还原的块", () => {
+  const body = formatUnlockComment("exec", "bob@h2/s9");
+  assert.deepEqual(parseUnlockMarker(body), { kind: "exec", claimer: "bob@h2/s9" });
+});
+
 test("parseClaimComment 对非认领评论返回 null", () => {
   assert.equal(parseClaimComment("普通评论,不是锁"), null);
   assert.equal(parseClaimComment(""), null);
+});
+
+test("认领锚点与释放锚点互不误认", () => {
+  // 认领评论不应被当成释放,释放评论不应被当成认领。
+  assert.equal(parseUnlockMarker(formatClaimComment("grill", "a@h/s", "2026-05-14T08:30:00Z")), null);
+  assert.equal(parseClaimComment(formatUnlockComment("grill", "a@h/s")), null);
 });
 
 test("parseClaimComment 容忍锚点前后有其它文本", () => {
@@ -40,31 +55,12 @@ test("parseClaimComment 容忍锚点前后有其它文本", () => {
   });
 });
 
-// --- Task 2: lock state + expiry ---
-
-test("determineLockState: 无 label → unlocked", () => {
-  const s = determineLockState(snap([], []), "grill");
-  assert.equal(s.locked, false);
+test("lockLabel: kind → GitHub label 名", () => {
+  assert.equal(lockLabel("grill"), "lock:grill");
+  assert.equal(lockLabel("exec"), "lock:exec");
 });
 
-test("determineLockState: 有 label + 认领评论 → locked, 带 claimer/at", () => {
-  const c = formatClaimComment("grill", "alice@h1/s1", "2026-05-14T08:30:00Z");
-  const s = determineLockState(snap(["lock:grill"], [c]), "grill");
-  assert.equal(s.locked, true);
-  assert.equal(s.claimer, "alice@h1/s1");
-  assert.equal(s.at, "2026-05-14T08:30:00Z");
-});
-
-test("determineLockState: 有 label 但无认领评论 → locked 但 at 缺失", () => {
-  const s = determineLockState(snap(["lock:grill"], []), "grill");
-  assert.equal(s.locked, true);
-  assert.equal(s.at, undefined);
-});
-
-test("determineLockState: 只看对应 kind 的 label", () => {
-  const s = determineLockState(snap(["lock:exec"], []), "grill");
-  assert.equal(s.locked, false);
-});
+// --- expiry ---
 
 test("isLockExpired: 25h 前 → true", () => {
   const now = new Date("2026-05-14T10:00:00Z");
@@ -80,32 +76,111 @@ test("isLockExpired: at 为 undefined → true(无时间戳的锁视为可清)",
   assert.equal(isLockExpired(undefined, new Date()), true);
 });
 
-// --- Task 3: claim-race resolution ---
-
-test("decideClaimOutcome: 贴评论后只有自己一条 → acquired", () => {
-  const mine = formatClaimComment("grill", "alice@h1/s1", "2026-05-14T08:30:00Z");
-  const out = decideClaimOutcome(snap(["lock:grill"], [mine]), "grill", "alice@h1/s1");
-  assert.equal(out, "acquired");
+test("isLockExpired: at 为非法时间戳 → true", () => {
+  assert.equal(isLockExpired("garbage", new Date()), true);
+  assert.equal(isLockExpired("", new Date()), true);
 });
 
-test("decideClaimOutcome: 有更早的他人认领评论 → race-lost", () => {
-  const earlier = formatClaimComment("grill", "bob@h2/s9", "2026-05-14T08:29:00Z");
-  const mine = formatClaimComment("grill", "alice@h1/s1", "2026-05-14T08:30:00Z");
-  const out = decideClaimOutcome(
-    snap(["lock:grill"], [earlier, mine]),
-    "grill",
-    "alice@h1/s1",
-  );
-  assert.equal(out, "race-lost");
+// --- holdingClaim:当前持有者 = 最早一条「未过期 + 未释放」的认领 ---
+
+test("holdingClaim: 无认领评论 → undefined(label 若在即 stale)", () => {
+  const now = new Date("2026-05-14T10:00:00Z");
+  assert.equal(holdingClaim([], "grill", now), undefined);
+  assert.equal(holdingClaim([{ body: "普通评论" }], "grill", now), undefined);
 });
 
-test("decideClaimOutcome: 自己是最早的一条 → acquired", () => {
-  const mine = formatClaimComment("grill", "alice@h1/s1", "2026-05-14T08:29:00Z");
-  const later = formatClaimComment("grill", "bob@h2/s9", "2026-05-14T08:30:00Z");
-  const out = decideClaimOutcome(
-    snap(["lock:grill"], [mine, later]),
+test("holdingClaim: 单条未过期认领 → 该认领者持有", () => {
+  const now = new Date("2026-05-14T10:00:00Z");
+  const h = holdingClaim(
+    [claim("grill", "alice@h1/s1", "2026-05-14T08:30:00Z")],
     "grill",
-    "alice@h1/s1",
+    now,
   );
-  assert.equal(out, "acquired");
+  assert.equal(h?.claimer, "alice@h1/s1");
+});
+
+test("holdingClaim: 唯一一条认领已过期 → undefined(sweeper 应撤 label)", () => {
+  const now = new Date("2026-05-14T10:00:00Z");
+  const h = holdingClaim(
+    [claim("grill", "alice@h1/s1", "2026-05-13T08:00:00Z")],
+    "grill",
+    now,
+  );
+  assert.equal(h, undefined);
+});
+
+test("holdingClaim: 多条未过期 → 最早的那条持有(let the first go)", () => {
+  const now = new Date("2026-05-14T10:00:00Z");
+  const h = holdingClaim(
+    [
+      claim("grill", "bob@h2/s9", "2026-05-14T09:00:00Z"),
+      claim("grill", "alice@h1/s1", "2026-05-14T08:30:00Z"),
+    ],
+    "grill",
+    now,
+  );
+  assert.equal(h?.claimer, "alice@h1/s1");
+});
+
+test("holdingClaim: 旧锚点已过期 + 新认领未过期 → 新认领者持有(残留锚点不死锁)", () => {
+  const now = new Date("2026-05-14T10:00:00Z");
+  const h = holdingClaim(
+    [
+      claim("grill", "alice@h1/s1", "2026-05-13T08:00:00Z"), // 26h 前,僵尸
+      claim("grill", "bob@h2/s9", "2026-05-14T09:30:00Z"), // 30min 前,活的
+    ],
+    "grill",
+    now,
+  );
+  assert.equal(h?.claimer, "bob@h2/s9");
+});
+
+test("holdingClaim: 持有者提前释放 → 不再持有(释放锚点让认领作废)", () => {
+  const now = new Date("2026-05-14T10:00:00Z");
+  const h = holdingClaim(
+    [
+      claim("grill", "alice@h1/s1", "2026-05-14T08:30:00Z"),
+      unlock("grill", "alice@h1/s1"),
+    ],
+    "grill",
+    now,
+  );
+  assert.equal(h, undefined);
+});
+
+test("holdingClaim: 早认领者释放后,晚认领者接手(不死锁)", () => {
+  const now = new Date("2026-05-14T10:00:00Z");
+  const h = holdingClaim(
+    [
+      claim("grill", "alice@h1/s1", "2026-05-14T08:30:00Z"),
+      claim("grill", "bob@h2/s9", "2026-05-14T09:00:00Z"),
+      unlock("grill", "alice@h1/s1"),
+    ],
+    "grill",
+    now,
+  );
+  assert.equal(h?.claimer, "bob@h2/s9");
+});
+
+test("holdingClaim: 释放锚点只作用于同名 claimer", () => {
+  const now = new Date("2026-05-14T10:00:00Z");
+  const h = holdingClaim(
+    [
+      claim("grill", "alice@h1/s1", "2026-05-14T08:30:00Z"),
+      unlock("grill", "bob@h2/s9"), // 释放的是别人,不影响 alice
+    ],
+    "grill",
+    now,
+  );
+  assert.equal(h?.claimer, "alice@h1/s1");
+});
+
+test("holdingClaim: 只看对应 kind", () => {
+  const now = new Date("2026-05-14T10:00:00Z");
+  const h = holdingClaim(
+    [claim("exec", "alice@h1/s1", "2026-05-14T09:00:00Z")],
+    "grill",
+    now,
+  );
+  assert.equal(h, undefined);
 });
