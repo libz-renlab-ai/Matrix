@@ -67,16 +67,19 @@ function parseArgv(argv: string[]): CliOpts {
 }
 
 function postOrUpdateComment(pr: number, body: string): void {
-  // 找现有的 marker 评论
-  const list = spawnSync("gh", ["pr", "view", String(pr), "--json", "comments"], { encoding: "utf-8" });
-  if (list.status !== 0) throw new Error(`gh pr view 失败: ${list.stderr}`);
-  const parsed = JSON.parse(list.stdout) as { comments?: Array<{ id?: string; body?: string }> };
-  const comments = parsed.comments ?? [];
+  const repo = process.env["GITHUB_REPOSITORY"];
+  if (!repo) throw new Error("GITHUB_REPOSITORY env 未设");
+  // 一定要走 REST API 列评论 —— `gh pr view --json comments` 返回的是 GraphQL
+  // node id (IC_kwDOI...),不能喂给 `gh api /repos/.../issues/comments/{id}`
+  // 的 PATCH(那个要 REST integer id),否则 404。本 session PR #7 v2 翻车
+  // 揭示的 bug;PR #2/#4 每个 PR 只跑过一次 → 只走 CREATE 路径 → 没暴露。
+  const list = spawnSync("gh", [
+    "api", `repos/${repo}/issues/${pr}/comments?per_page=100`,
+  ], { encoding: "utf-8" });
+  if (list.status !== 0) throw new Error(`list comments 失败: ${list.stderr}`);
+  const comments = JSON.parse(list.stdout) as Array<{ id?: number; body?: string }>;
   const existing = comments.find((c) => (c.body ?? "").startsWith(COMMENT_MARKER));
-  if (existing && existing.id) {
-    // gh 不直接支持 update comment,用 API
-    const repo = process.env["GITHUB_REPOSITORY"];
-    if (!repo) throw new Error("GITHUB_REPOSITORY env 未设");
+  if (existing && existing.id !== undefined) {
     const r = spawnSync("gh", [
       "api", "--method", "PATCH",
       `repos/${repo}/issues/comments/${existing.id}`,
@@ -84,8 +87,13 @@ function postOrUpdateComment(pr: number, body: string): void {
     ], { encoding: "utf-8" });
     if (r.status !== 0) throw new Error(`update comment 失败: ${r.stderr}`);
   } else {
-    const r = spawnSync("gh", ["pr", "comment", String(pr), "--body", body], { encoding: "utf-8" });
-    if (r.status !== 0) throw new Error(`gh pr comment 失败: ${r.stderr}`);
+    // 也走 REST API 保持对称(REST ids → 下次能正确 UPDATE)。
+    const r = spawnSync("gh", [
+      "api", "--method", "POST",
+      `repos/${repo}/issues/${pr}/comments`,
+      "-f", `body=${body}`,
+    ], { encoding: "utf-8" });
+    if (r.status !== 0) throw new Error(`create comment 失败: ${r.stderr}`);
   }
 }
 
