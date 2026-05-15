@@ -234,11 +234,25 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           VERSION="${TAG#v}"
           REPO_DIR=$(mktemp -d)
+          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
 
-          git clone --depth=1 --branch=gh-pages \
-            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" \
-            "$REPO_DIR"
-          cd "$REPO_DIR"
+          # Bootstrap-safe gh-pages 拉取(issue #5):仓库首次发 release 时
+          # gh-pages 分支可能尚未建过;原 `git clone --branch=gh-pages` 在那种情况
+          # 下报 "fatal: Remote branch gh-pages not found",整个 publish job 挂。
+          # 修复:try clone 指定分支;失败则 clone default、checkout --orphan、
+          # 清空 index,后续 git add + git commit + git push 会把 latest.json
+          # 作为 orphan 的首个 commit 推上去,自动建分支。
+          if git clone --depth=1 --branch=gh-pages "$REPO_URL" "$REPO_DIR" 2>/dev/null; then
+            echo "gh-pages 已存在 → 在其上 update latest.json"
+            cd "$REPO_DIR"
+          else
+            echo "gh-pages 不存在(首次)→ 初始化为 orphan branch"
+            rm -rf "$REPO_DIR"
+            git clone --depth=1 "$REPO_URL" "$REPO_DIR"
+            cd "$REPO_DIR"
+            git checkout --orphan gh-pages
+            git rm -rf . >/dev/null 2>&1 || true
+          fi
 
           # Build the JSON with jq (avoids manual string concatenation +
           # double-escaping pitfalls; validation guard in the prior step
