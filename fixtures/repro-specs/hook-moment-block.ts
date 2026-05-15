@@ -54,6 +54,14 @@ const spec: ReproSpec = {
     windowTitle: "TADEMOREC",
     durationSec: 40,
   },
+  // CI 上跳过此 spec —— baseline.ref="HEAD" 数据驱动差异依赖 $TA_DEMO_STAGE 下
+  // home-empty/home-loaded 两份知识库目录预置(见上方注释),Ubuntu runner 没那
+  // 目录、也没 Win32 EnumWindows 录 GIF 的能力。本地手工跑仍然有效。
+  // 见 https://github.com/libz-renlab-ai/Matrix/issues/3 Gap 1。
+  ci: {
+    skip: true,
+    reason: "需 $TA_DEMO_STAGE 下 home-empty/home-loaded 两份知识库目录预置 + 录 GIF 仅 Win32 可行",
+  },
 };
 
 export default spec;

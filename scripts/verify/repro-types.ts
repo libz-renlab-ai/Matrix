@@ -51,6 +51,16 @@ export interface ResultMatcher {
   stderrNotContains?: string[];
 }
 
+/** CI 行为配置。skip=true 时 pr-review.yml 的 list-specs job 会把此 spec 从
+ *  repro matrix 里过滤掉,并把它当显式豁免计入 verdict(不再让 spec 无脑 fail)。
+ *  典型用例:依赖手工预置目录 / Windows-only / 需 root 权限等无法在 Ubuntu runner 上重现的 spec。
+ *  纯过滤逻辑见 scripts/verify/list-specs-core.ts; issue #3 Gap 1 落地此字段。 */
+export interface SpecCi {
+  skip?: boolean;
+  /** 给人看的跳过原因;verdict comment 与日志都会展示。 */
+  reason?: string;
+}
+
 export interface ReproSpec {
   id: string;                        // kebab-case,比如 "hook-moment-block"
   description: string;
@@ -63,6 +73,8 @@ export interface ReproSpec {
   scenario?: Scenario;
   /** 给 GIF 录制用的可视化重演脚本。无此字段则 CLI 不录 GIF。 */
   demoScene?: DemoScene;
+  /** CI 上的行为配置;主要给 pr-review.yml 的 list-specs job 读。 */
+  ci?: SpecCi;
 }
 
 /** 单个 step 的实际执行结果(baseline + current 各自一份)。 */
