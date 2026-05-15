@@ -1,0 +1,17 @@
+name: Setup repo (pnpm + node + install)
+description: 在已 checkout 的 repo 上装 pnpm/node 并 frozen install。注意:调用方必须先 actions/checkout —— composite action 自己 checkout 是鸡生蛋(GitHub 找不到 action.yml)。
+inputs:
+  node-version:
+    description: Node 版本
+    required: false
+    default: '22'
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v5
+    - uses: actions/setup-node@v5
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+      shell: bash

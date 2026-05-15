@@ -1,0 +1,182 @@
+name: PR Review (远程 CC 自动评审)
+
+# 只跑仓库内 PR;外部 fork 自动 skip(每个 job 用 if 守门)。
+# 详细说明见 docs/plans/2026-05-15-remote-review-bot.md 安全前提。
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+
+# 同 PR 多 commit 只跑最新一次,省 CI 分钟
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  list-specs:
+    # 只在仓库内 PR 上跑
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      specs: ${{ steps.list.outputs.specs }}
+      skipReproReason: ${{ steps.list.outputs.skipReason }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - id: list
+        shell: bash
+        env:
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          # 显式豁免 (A): PR 带 skip-repro label
+          if echo "$PR_LABELS" | jq -e '. | index("skip-repro")' >/dev/null; then
+            echo "specs=[]" >> "$GITHUB_OUTPUT"
+            echo "skipReason=skip-repro label" >> "$GITHUB_OUTPUT"
+            echo "::notice::PR 带 skip-repro label —— 跳过 repro 检查"
+            exit 0
+          fi
+          # 列 fixtures/repro-specs/*.ts(排除 README/index/共享文件)
+          if [[ ! -d fixtures/repro-specs ]]; then
+            echo "specs=[]" >> "$GITHUB_OUTPUT"
+            echo "skipReason=no-repro-specs-dir" >> "$GITHUB_OUTPUT"
+            echo "::warning::fixtures/repro-specs 目录不存在 —— bootstrap 期豁免,跳过 repro 检查"
+            exit 0
+          fi
+          mapfile -t files < <(find fixtures/repro-specs -maxdepth 1 -name '*.ts' ! -name 'index.ts' | sort)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "specs=[]" >> "$GITHUB_OUTPUT"
+            echo "skipReason=empty-repro-specs-dir" >> "$GITHUB_OUTPUT"
+            echo "::warning::fixtures/repro-specs 为空 —— bootstrap 期豁免,跳过 repro 检查"
+            exit 0
+          fi
+          json=$(printf '%s\n' "${files[@]}" | jq -R . | jq -sc .)
+          echo "specs=$json" >> "$GITHUB_OUTPUT"
+          echo "skipReason=" >> "$GITHUB_OUTPUT"
+          echo "找到 spec: ${files[*]}"
+
+  repro:
+    needs: list-specs
+    if: needs.list-specs.outputs.specs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        spec: ${{ fromJson(needs.list-specs.outputs.specs) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: ./.github/actions/setup-repo
+      - name: Build teamagent (有的 spec 跑 dist/bin.js)
+        run: pnpm --filter teamagent build
+      - name: Run repro
+        run: |
+          slug=$(basename "${{ matrix.spec }}" .ts)
+          mkdir -p "/tmp/repro-out/$slug"
+          npx tsx scripts/verify/repro-cli.ts "${{ matrix.spec }}" --no-gif \
+            --out "/tmp/repro-out/$slug"
+        # ↑ 退出码 0/1 反映 verdict;不要 ||true,要让失败浮出来
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repro-${{ strategy.job-index }}
+          path: /tmp/repro-out/
+
+  tests:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0          # review 标准 2 需要 git merge-base / merge-tree,要全历史
+      - uses: ./.github/actions/setup-repo
+      - name: pnpm test
+        run: pnpm test
+      - name: Working tree must be clean
+        shell: bash
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "::error::tests 跑完后工作树不干净:"
+            git status --porcelain
+            exit 1
+          fi
+
+  verdict:
+    needs: [list-specs, repro, tests]
+    # always() —— 不管 repro/tests 怎么挂,都跑一次去发评论 + 设 status,
+    # 否则 PR 上不显示任何 verdict,体验差。
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: ./.github/actions/setup-repo
+      - name: Download all repro artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/repro-out-all
+          pattern: repro-*
+          merge-multiple: true
+      - name: Aggregate verdict
+        shell: bash
+        env:
+          REPRO_OUTCOME: ${{ needs.repro.result }}                # success / failure / skipped / cancelled
+          TESTS_OUTCOME: ${{ needs.tests.result }}
+          SKIP_REPRO_REASON: ${{ needs.list-specs.outputs.skipReproReason }}
+        run: |
+          mkdir -p /tmp/agg
+          # repro_ok 计算(三态豁免见安全前提):
+          #   - REPRO_OUTCOME = success → ok
+          #   - REPRO_OUTCOME = skipped 且 SKIP_REPRO_REASON 非空 → ok(显式豁免:bootstrap / docs-only)
+          #   - 其它 → 不 ok
+          if [[ "$REPRO_OUTCOME" == "success" ]]; then
+            repro_ok=true
+            repro_summary="verdict=pass (all specs)"
+          elif [[ "$REPRO_OUTCOME" == "skipped" && -n "$SKIP_REPRO_REASON" ]]; then
+            repro_ok=true
+            repro_summary="豁免 — $SKIP_REPRO_REASON"
+          else
+            repro_ok=false
+            repro_summary="verdict=fail/missing (REPRO_OUTCOME=$REPRO_OUTCOME)"
+          fi
+          if [[ "$TESTS_OUTCOME" == "success" ]]; then
+            tests_ok=true
+            tests_summary="tests pass + tree clean"
+          else
+            tests_ok=false
+            tests_summary="tests failed or tree dirty (TESTS_OUTCOME=$TESTS_OUTCOME)"
+          fi
+          verdict=$([[ "$repro_ok" == "true" && "$tests_ok" == "true" ]] && echo "pass" || echo "fail")
+          jq -n \
+            --arg generatedAt "$(date -u +%FT%TZ)" \
+            --arg verdict "$verdict" \
+            --argjson repro_ok "$repro_ok" \
+            --argjson tests_ok "$tests_ok" \
+            --arg repro_summary "$repro_summary" \
+            --arg tests_summary "$tests_summary" \
+            '{
+              generatedAt: $generatedAt, verdict: $verdict,
+              criteria: [
+                {id:"repro-pass", ok:$repro_ok, summary:$repro_summary, details:""},
+                {id:"tests-and-merge-clean", ok:$tests_ok, summary:$tests_summary, details:""}
+              ]
+            }' > /tmp/agg/review-verdict.json
+          cat /tmp/agg/review-verdict.json
+      - name: Post comment + set status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          npx tsx scripts/review/post-pr-comment.ts \
+            --verdict /tmp/agg/review-verdict.json \
+            --pr ${{ github.event.pull_request.number }} \
+            --sha ${{ github.event.pull_request.head.sha }} \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

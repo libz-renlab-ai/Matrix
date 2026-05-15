@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>验收报告 · TeamAgent 拦截重复犯的错</title>
+<style>
+  :root {
+    --green: #1a7f37;
+    --green-bg: #eaf6ec;
+    --amber: #9a6700;
+    --amber-bg: #fff6e0;
+    --red: #b3261e;
+    --ink: #1f2328;
+    --muted: #656d76;
+    --line: #d8dee4;
+    --term-bg: #0c0c14;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Source Han Sans SC", sans-serif;
+    color: var(--ink);
+    background: #f6f8fa;
+    line-height: 1.75;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 20px 80px; }
+  header {
+    background: linear-gradient(135deg, #1a7f37 0%, #2da44e 100%);
+    color: #fff;
+    padding: 44px 20px 38px;
+    text-align: center;
+  }
+  header .kicker { font-size: 14px; opacity: .85; letter-spacing: 2px; }
+  header h1 { margin: 8px 0 4px; font-size: 30px; }
+  header .sub { font-size: 16px; opacity: .92; }
+  .verdict {
+    max-width: 920px; margin: -26px auto 0; background: #fff;
+    border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.08);
+    padding: 26px 30px; display: flex; align-items: center; gap: 22px;
+  }
+  .verdict .badge {
+    flex: none; width: 92px; height: 92px; border-radius: 50%;
+    background: var(--green-bg); color: var(--green);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 50px;
+  }
+  .verdict .vtext h2 { margin: 0 0 4px; font-size: 22px; color: var(--green); }
+  .verdict .vtext p { margin: 0; color: var(--muted); font-size: 15px; }
+  section { margin-top: 38px; }
+  section h3 {
+    font-size: 19px; margin: 0 0 14px; padding-left: 12px;
+    border-left: 4px solid var(--green);
+  }
+  .card {
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 12px; padding: 22px 26px;
+  }
+  p.lead { font-size: 17px; }
+  .gif-wrap { text-align: center; }
+  .gif-wrap img { max-width: 100%; border-radius: 10px; border: 1px solid var(--line); }
+  .caption { color: var(--muted); font-size: 14px; margin-top: 10px; }
+  .ba { display: flex; gap: 20px; flex-wrap: wrap; }
+  .ba .col { flex: 1; min-width: 280px; }
+  .ba .col img { width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+  .tag {
+    display: inline-block; font-size: 13px; font-weight: 700;
+    padding: 3px 12px; border-radius: 20px; margin-bottom: 8px;
+  }
+  .tag.before { background: var(--amber-bg); color: var(--amber); }
+  .tag.after  { background: var(--green-bg); color: var(--green); }
+  .ba .col p { font-size: 14px; color: var(--muted); margin: 8px 2px 0; }
+  table.crit { width: 100%; border-collapse: collapse; font-size: 15px; }
+  table.crit td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.crit tr:last-child td { border-bottom: none; }
+  table.crit .ck { width: 30px; color: var(--green); font-size: 18px; }
+  .term {
+    background: var(--term-bg); color: #e6e6e6; border-radius: 10px;
+    padding: 16px 18px; font-family: "Cascadia Code", "Consolas", "Courier New", monospace;
+    font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-x: auto;
+    margin: 0;
+  }
+  .term .grn { color: #3fb950; }
+  .term .red { color: #ff7b72; }
+  .term .ylw { color: #d29922; }
+  .term .gry { color: #8b949e; }
+  .two { display: flex; gap: 20px; flex-wrap: wrap; }
+  .two > div { flex: 1; min-width: 300px; }
+  .two h4 { margin: 0 0 8px; font-size: 14px; }
+  ol.repro { padding-left: 22px; }
+  ol.repro li { margin-bottom: 6px; }
+  code.inline {
+    background: #eef1f4; padding: 1px 6px; border-radius: 4px;
+    font-family: "Cascadia Code", "Consolas", monospace; font-size: 13px;
+  }
+  .scope { display: flex; gap: 20px; flex-wrap: wrap; }
+  .scope > div { flex: 1; min-width: 280px; }
+  .scope ul { margin: 6px 0 0; padding-left: 20px; font-size: 14px; }
+  .scope .yes h4 { color: var(--green); }
+  .scope .no h4 { color: var(--muted); }
+  footer {
+    margin-top: 46px; padding-top: 20px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 13px;
+  }
+  footer table td { padding: 2px 14px 2px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="kicker">TEAMAGENT · 验收报告</div>
+  <h1>把 AI 重复犯的错,在执行前拦下来</h1>
+  <div class="sub">核心能力验证 · 2026-05-14</div>
+</header>
+
+<div class="wrap">
+
+  <div class="verdict">
+    <div class="badge">✅</div>
+    <div class="vtext">
+      <h2>已实现,并通过验证</h2>
+      <p>同一条命令、同一个工具,在「TeamAgent 没学到经验」和「学到经验」两种状态下,给出了相反的结果 —— 该放的放行,该拦的拦住。前后对比成立。</p>
+    </div>
+  </div>
+
+  <section>
+    <h3>这个功能是什么</h3>
+    <div class="card">
+      <p class="lead">
+        团队里的人用 AI 写代码,难免会犯一些"早就有人踩过的坑"。TeamAgent 做的事很简单:
+        <strong>把团队踩过的坑记下来,等 AI 下次又要踩同一个坑时,在它真正动手之前把它拦住。</strong>
+      </p>
+      <p style="color:var(--muted); font-size:15px; margin-bottom:0;">
+        本次验收用一个具体的坑来演示:AI 想安装 <code class="inline">moment</code> 这个已经过时的日期库。
+        我们对比 TeamAgent 在"还没学到这条经验"和"已经学到"两种状态下的反应。
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <h3>真实屏幕录像</h3>
+    <div class="card gif-wrap">
+      <img src="demo.gif" alt="TeamAgent 拦截演示的真实屏幕录像">
+      <div class="caption">
+        这是一段<strong>真实的屏幕录像</strong>(不是动画绘制):一个真实的终端窗口,真实地跑了两遍同一条命令。
+        上半段是"之前"、下半段是"之后"。
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h3>之前 vs 之后 —— 一眼看懂</h3>
+    <div class="card">
+      <div class="ba">
+        <div class="col">
+          <span class="tag before">之前 · 知识库是空的</span>
+          <img src="assets/still-before.png" alt="之前:命令被放行">
+          <p>TeamAgent 还没学到"别用 moment"这条经验。
+          AI 执行 <code class="inline">npm install moment</code> —— <strong>放行</strong>。
+          过时的库就这样被装进了项目,没人拦。</p>
+        </div>
+        <div class="col">
+          <span class="tag after">之后 · 经验已进知识库</span>
+          <img src="assets/still-after.png" alt="之后:命令被拦截">
+          <p>这条经验已经进了知识库。<strong>同样的命令</strong>再跑一次 ——
+          <strong>被拦下</strong>,并且告诉 AI:应该改用 dayjs。错误没能发生。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h3>凭什么说"实现了"——验收标准</h3>
+    <div class="card">
+      <p style="margin-top:0; color:var(--muted); font-size:15px;">
+        判断一个功能到底实现了没有,靠的不是"它说它能",而是<strong>前后对比能不能对得上</strong>:
+      </p>
+      <table class="crit">
+        <tr>
+          <td class="ck">✅</td>
+          <td><strong>同一个输入,只改变一个变量,结果相反。</strong><br>
+          两次跑的命令<strong>完全一样</strong>(<code class="inline">npm install moment</code>),工具一样(Bash)。
+          唯一的差别是:知识库里有没有那条学到的经验。<br>
+          结果:空知识库 → <span style="color:var(--amber)">放行</span>;有经验 → <span style="color:var(--green)">拦截</span>。
+          一个变量,两个相反的结果 —— 说明拦截确实是这条经验起的作用,不是碰巧。</td>
+        </tr>
+        <tr>
+          <td class="ck">✅</td>
+          <td><strong>拦截给出的理由是具体的、可核验的。</strong><br>
+          不是笼统地"拒绝",而是明确指出:置信度 0.85、应改用 dayjs 或 date-fns、
+          原因是 moment 已进入维护模式且体积过大、并附上规则编号 <code class="inline">seed-pack-universal-moment</code>。</td>
+        </tr>
+        <tr>
+          <td class="ck">▫️</td>
+          <td style="color:var(--muted)"><strong>全量测试通过 + 合并无冲突</strong> —— 这是工作流里的第 2 条标准,由 CI 把关,
+          不在本份"功能验收报告"的范围内。本报告只回答"这个功能到底做出来没有"。</td>
+        </tr>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h3>原始证据(机器可核验)</h3>
+    <div class="card">
+      <p style="margin-top:0; color:var(--muted); font-size:15px;">
+        下面是两次运行<strong>逐字未改</strong>的真实输出。任何人都可以照"怎么复现"一节自己跑一遍,得到一模一样的结果。
+      </p>
+      <div class="two">
+        <div>
+          <h4 style="color:var(--amber)">之前 — 知识库为空</h4>
+<pre class="term">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+<span class="grn">🟢 TeamAgent · 模拟 PreToolUse 结果</span>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ 工具: Bash
+▸ 输入: {"command":"npm install moment"}
+▸ 决策: <span class="ylw">通过 (无规则命中)</span>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</pre>
+        </div>
+        <div>
+          <h4 style="color:var(--green)">之后 — 经验已进知识库</h4>
+<pre class="term">━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+<span class="red">🚫 TeamAgent · 模拟 PreToolUse 结果</span>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ 工具: Bash
+▸ 输入: {"command":"npm install moment"}
+▸ 决策: <span class="red">deny</span>
+▸ 拦截原因:
+    🚫 TeamAgent 拦截 (置信 0.85)
+    应改用: 使用 dayjs(API 兼容、~2KB)或 date-fns
+    原因: moment.js 自 2020 起进入维护模式,体积约
+          290KB,易引发隐性 bug。
+    (规则 id: seed-pack-universal-moment)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</pre>
+        </div>
+      </div>
+      <p class="caption">原文也保存在 <code class="inline">assets/evidence-before.txt</code> 与 <code class="inline">assets/evidence-after.txt</code>。</p>
+    </div>
+  </section>
+
+  <section>
+    <h3>怎么复现(给想自己核验的人)</h3>
+    <div class="card">
+      <ol class="repro">
+        <li>在 Matrix 仓库根目录,准备一个空知识库的环境,跑:<br>
+          <code class="inline">teamagent demo hook Bash command="npm install moment"</code><br>
+          → 得到「之前」的结果:放行。</li>
+        <li>把 TeamAgent 预置的经验装进知识库(<code class="inline">teamagent init</code> 会加载 <code class="inline">seed/packs/universal.jsonl</code>,
+          其中包含 moment 这条规则)。</li>
+        <li>再跑一遍<strong>同样的命令</strong> → 得到「之后」的结果:拦截。</li>
+        <li>本次屏幕录像的完整脚本保存在 <code class="inline">recording/demo-scene.ps1</code> 与 <code class="inline">recording/record.ps1</code>,可原样重跑。</li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <h3>严谨说明 —— 这次验证覆盖了什么、没覆盖什么</h3>
+    <div class="card scope">
+      <div class="yes">
+        <h4>✅ 已覆盖</h4>
+        <ul>
+          <li>真实的知识库(SQLite)+ 真实的匹配引擎 —— "要不要拦、为什么拦"的完整判断逻辑。</li>
+          <li>同输入、单变量、相反结果的前后对比。</li>
+          <li>拦截理由的具体内容(置信度、替代方案、原因、规则编号)。</li>
+        </ul>
+      </div>
+      <div class="no">
+        <h4>▫️ 未覆盖(说明,不是缺陷)</h4>
+        <ul>
+          <li>本次走的是 <code class="inline">teamagent demo hook</code> 离线复现命令 —— 它复现的是拦截判断本身,
+            不需要打开编辑器;编辑器内"红框弹出"的端到端链路不在本次范围。</li>
+          <li>本次"之后"用的是预置经验规则;由团队成员的真实纠正自动提炼规则的环节,是另一条链路,需单独验收。</li>
+          <li>全量测试 / 合并冲突 —— 由 CI 把关。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <table>
+      <tr><td>报告生成</td><td>2026-05-14</td></tr>
+      <tr><td>被验功能</td><td>PreToolUse hook 拦截重复犯的错(以 moment→dayjs 为例)</td></tr>
+      <tr><td>规则编号</td><td>seed-pack-universal-moment(来自 packages/teamagent/seed/packs/universal.jsonl)</td></tr>
+      <tr><td>运行环境</td><td>Windows 11 · Node 22 · TeamAgent (Matrix) 预编译 CLI</td></tr>
+      <tr><td>录像方式</td><td>真实屏幕录像(ffmpeg gdigrab 抓取真实终端窗口),非动画绘制</td></tr>
+    </table>
+    <p style="margin-top:14px;">本报告是 Matrix 项目「两套验证」中<strong>套件 2(验收报告)</strong>的产物 ——
+    给非技术读者一眼判断功能到底实现没有。本份为人工产出的首个样板,作为后续验证框架的参照基准。</p>
+  </footer>
+
+</div>
+</body>
+</html>

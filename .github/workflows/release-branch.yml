@@ -3,6 +3,16 @@ name: Publish release branch
 on:
   push:
     branches: [main]
+  schedule:
+    # 每 6 小时一次:UTC 00:00 / 06:00 / 12:00 / 18:00
+    # 见 docs/adr/0017-six-hour-release.md
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Why are you manually triggering?'
+        required: false
+        default: 'manual'
 
 permissions:
   contents: write
@@ -11,21 +21,50 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - name: Early exit if HEAD already released
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          # 比 GITHUB_SHA 与 gh-pages 上 latest.json.sha,相等 → skip 后续所有 step。
+          # 见 docs/adr/0017-six-hour-release.md「早退守门为什么必要」。
+          PUBLISHED_URL="https://${{ github.repository_owner }}.github.io/$(echo '${{ github.repository }}' | cut -d/ -f2)/latest.json"
+          if ! curl -fsSL "$PUBLISHED_URL" -o /tmp/latest.json 2>/dev/null; then
+            echo "latest.json 不存在(首次 release?) → 继续发布"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          PUBLISHED_SHA=$(jq -r '.sha // empty' /tmp/latest.json)
+          if [[ "$PUBLISHED_SHA" == "$GITHUB_SHA" ]]; then
+            echo "GITHUB_SHA=$GITHUB_SHA 已发布过(latest.json.sha 一致) → skip"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "GITHUB_SHA=$GITHUB_SHA  vs  published=$PUBLISHED_SHA → 继续发布"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.guard.outputs.skip != 'true'
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v5
+      - if: steps.guard.outputs.skip != 'true'
+        uses: pnpm/action-setup@v5
 
-      - uses: actions/setup-node@v5
+      - if: steps.guard.outputs.skip != 'true'
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter teamagent build
+      - if: steps.guard.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.guard.outputs.skip != 'true'
+        run: pnpm --filter teamagent build
 
       - name: Detect version
+        if: steps.guard.outputs.skip != 'true'
         id: version
         run: |
           VERSION=$(jq -r .version packages/teamagent/package.json)
@@ -41,6 +80,7 @@ jobs:
           printf 'tag=v%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Pack tarball
+        if: steps.guard.outputs.skip != 'true'
         run: |
           # Clean stale artefacts from any prior workflow run before pack, so
           # the `mv teamagent-*.tgz` glob never expands to multiple files.
@@ -55,6 +95,7 @@ jobs:
             > "teamagent-${{ steps.version.outputs.tag }}.tgz.sha256"
 
       - name: Stage release artifacts
+        if: steps.guard.outputs.skip != 'true'
         run: |
           rm -rf /tmp/release-stage
           mkdir -p /tmp/release-stage
@@ -88,6 +129,7 @@ jobs:
             > /tmp/release-stage/release-meta.json
 
       - name: Create GitHub Release (idempotent)
+        if: steps.guard.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -105,6 +147,7 @@ jobs:
           fi
 
       - name: Force-push release branch
+        if: steps.guard.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -119,6 +162,7 @@ jobs:
             release
 
       - name: Resolve PR creator for merge commit (post-merge auto-update feature)
+        if: steps.guard.outputs.skip != 'true'
         id: pr_lookup
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -166,6 +210,7 @@ jobs:
           echo "Resolved PR: number=$PR_NUMBER creator=$PR_CREATOR merged_at=$PR_MERGED_AT"
 
       - name: Publish latest.json to gh-pages (issue #313 Tier 1)
+        if: steps.guard.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr_lookup.outputs.pr_number }}

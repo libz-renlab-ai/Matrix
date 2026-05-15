@@ -1,0 +1,12 @@
+﻿━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚫 TeamAgent · 模拟 PreToolUse 结果
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+▸ 工具: Bash
+▸ 输入: {"command":"npm install moment"}
+▸ 决策: deny
+▸ 拦截原因:
+    🚫 TeamAgent 拦截 (置信 0.85)
+    应改用: 使用 dayjs（API 兼容、~2KB）或 date-fns（tree-shakable）替代 moment
+    原因: moment.js 自 2020 起官方进入 maintenance mode，不再添加新功能；体积约 290KB（gzipped 71KB），mutable API 易引发隐性 bug。dayjs/date-fns 在新项目中应作为默认选择。
+    (规则 id: seed-pack-universal-moment)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
