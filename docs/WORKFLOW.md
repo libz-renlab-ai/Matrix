@@ -117,13 +117,14 @@ FIXEDFLOW / Symphony / 双 driver 那一整套(见文末「本文档取代了什
 |---|---|
 | `grill-me` 挖方案 | ✅ skill 已有 |
 | 两套验证的「概念」 | ✅ judge harness / visual-proof 文档已有,可复用 |
-| 套件 1 自带录 GIF | ⚠️ 录制方式已定 —— ffmpeg gdigrab 真实录屏,脚本见 `docs/acceptance/2026-05-14-hook-moment-block/recording/`;接入套件 1 代码待搭 |
-| 套件 2 HTML 报告生成 | ⚠️ 部分就绪 —— 规范 `docs/acceptance/SPEC.md` + 人工样板已有;自动生成器待搭(见 `docs/plans/2026-05-14-verification-tooling.md`) |
-| 本地 review(独立 subagent + 打回循环) | ⚠️ 待搭 —— 需要 review subagent、把「2 条标准」做成可自动跑的检查、以及「不通过打回重做」的循环 |
-| 远程 CC 自动评审 | ❌ 待搭 —— 旧的云端评审 bot 已删,需重建 |
+| 套件 1 复现框架 | ✅ 已搭 —— `scripts/verify/repro-core.ts`(纯)+ `repro-runner.ts`(IO 壳) + `worktree-shell.ts`(基线 worktree)+ `repro-cli.ts`(orchestrator);ReproSpec 见 `docs/acceptance/2026-05-14-hook-moment-block/repro/`;Plan `docs/plans/2026-05-14-verification-tooling.md` |
+| 套件 1 自带录 GIF | ✅ 已搭 —— `scripts/verify/gif-core.ts`(纯,ffmpeg arg 构造)+ `record-gif.ts`(spawn pwsh + ffmpeg gdigrab 真实录屏)+ `win-record.ps1`(Win32 窗口定位与生命周期);已接入 `repro-cli.ts`,跑完套件 1 自动出 GIF |
+| 套件 2 HTML 报告生成 | ✅ 已搭 —— `scripts/verify/report-core.ts`(纯)+ `report-template.ts`(INLINE_CSS + 5 字符 XSS 转义)+ `gen-report.ts`(CLI);9 段中文报告,内嵌 GIF;ReportManifest schema 见 `docs/acceptance/2026-05-14-hook-moment-block/manifest.json` |
+| 本地 review(独立 subagent + 打回循环) | ✅ 已搭 —— `scripts/review/review-core.ts`(纯,2 条标准 → CriterionResult → ReviewVerdict)+ `run-checks.ts`(IO 壳,repro-cli + 全量测试 + merge-tree 三检)+ `review-cli.ts` + `loop-driver.ts`(manual/agent 双模式);`.claude/skills/local-review/SKILL.md` 钉死契约 |
+| 远程 CC 自动评审 | ✅ 已搭 —— `.github/workflows/pr-review.yml` 4-job(list-specs / repro matrix / tests / verdict),`if: always()` 守 verdict job;`scripts/review/post-pr-comment.ts` 用 `COMMENT_MARKER` 复用同一条评论 + 写 `review/verdict` commit status |
 | 两把锁 + 24h 自动撤锁 | ✅ 已搭 —— `lock:grill` / `lock:exec` 两个 label 当锁,认领/释放/查状态走文档(`docs/CLAIM-LOCK.md`),24h 自动撤锁由 `scripts/lock-sweep.ts` + `.github/workflows/lock-sweeper.yml` 每小时跑;纯逻辑 `scripts/lock-core.ts` 有单测 |
-| 个人开发分支 → 主分支 自动合 | ❌ 待搭 |
-| 每 6 小时 release | ⚠️ 待改 —— 现有 `release-branch.yml` 是「每次 push main 就发」,需改成 6 小时定时 |
+| 个人开发分支 → 主分支 自动合 | ✅ 已搭 —— `.github/workflows/auto-merge.yml` 走 `workflow_run` 链式触发(pr-review 跑完 → 自动启动)→ `scripts/automerge/can-auto-merge.ts`(纯门控,7+ 条:draft / base!=main / do-not-merge / visual-proof / verdict / fork / mergeable / state)→ 通过则 `gh pr merge --squash --delete-branch` |
+| 每 6 小时 release | ✅ 已搭 —— `release-branch.yml` 三路触发(push main + cron `0 */6 * * *` + workflow_dispatch),publish job 第一步早退守门(`GITHUB_SHA` vs `latest.json.sha` 比对,相等 skip 后续 12 个 step);ADR `docs/adr/0017-six-hour-release.md` |
 
 ## 本文档取代了什么
 
