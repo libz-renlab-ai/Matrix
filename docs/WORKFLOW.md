@@ -64,7 +64,7 @@ FIXEDFLOW / Symphony / 双 driver 那一整套(见文末「本文档取代了什
 - 套件 1 实际跑过一遍后,系统录 GIF + 截图。
 - GIF 嵌入一份 **HTML 报告**,中文。
 - 硬要求:**非常严谨、不能浮于表面** —— 让 CEO **一眼**就能判断 feature 到底实现没实现。
-- 参考:`docs/VISUAL-PROOF-PR.md`、`docs/VISUAL-PROOF-FORMAT.md`。
+- 参考:`docs/acceptance/SPEC.md`(验收报告规范)+ `docs/acceptance/2026-05-14-hook-moment-block/`(人工产出的参照样板)。
 
 ### 4 · 本地 review
 执行的 CC 完成后,**另开一个独立 subagent 来 review**(不是执行 CC 自己自检 —— 避免自己给自己打分)。**过关标准 2 条**:
@@ -117,8 +117,8 @@ FIXEDFLOW / Symphony / 双 driver 那一整套(见文末「本文档取代了什
 |---|---|
 | `grill-me` 挖方案 | ✅ skill 已有 |
 | 两套验证的「概念」 | ✅ judge harness / visual-proof 文档已有,可复用 |
-| 套件 1 自带录 GIF | ⚠️ 待搭 —— 录屏工具(vhs)本机未装,需定方案 |
-| 套件 2 HTML 报告生成 | ⚠️ 待搭 —— 需要一个把 GIF + 截图 + 结论拼成严谨 HTML 的生成器 |
+| 套件 1 自带录 GIF | ⚠️ 录制方式已定 —— ffmpeg gdigrab 真实录屏,脚本见 `docs/acceptance/2026-05-14-hook-moment-block/recording/`;接入套件 1 代码待搭 |
+| 套件 2 HTML 报告生成 | ⚠️ 部分就绪 —— 规范 `docs/acceptance/SPEC.md` + 人工样板已有;自动生成器待搭(见 `docs/plans/2026-05-14-verification-tooling.md`) |
 | 本地 review(独立 subagent + 打回循环) | ⚠️ 待搭 —— 需要 review subagent、把「2 条标准」做成可自动跑的检查、以及「不通过打回重做」的循环 |
 | 远程 CC 自动评审 | ❌ 待搭 —— 旧的云端评审 bot 已删,需重建 |
 | 两把锁 + 24h 自动撤锁 | ✅ 已搭 —— `lock:grill` / `lock:exec` 两个 label 当锁,认领/释放/查状态走文档(`docs/CLAIM-LOCK.md`),24h 自动撤锁由 `scripts/lock-sweep.ts` + `.github/workflows/lock-sweeper.yml` 每小时跑;纯逻辑 `scripts/lock-core.ts` 有单测 |
@@ -138,7 +138,7 @@ FIXEDFLOW / Symphony / 双 driver 那一整套(见文末「本文档取代了什
 
 - 锁 / 认领:`CLAIM-LOCK.md`
 - 验证套件 1:`PLAN-RESEARCH-REPORT.md`
-- 验证套件 2:`VISUAL-PROOF-PR.md`、`VISUAL-PROOF-FORMAT.md`、`VISUAL-PROOF-CONTENT.md`、`VISUAL-PROOF-HUMAN-MERGE.md`
+- 验证套件 2:`acceptance/SPEC.md`(验收报告规范)、`acceptance/2026-05-14-hook-moment-block/`(参照样板)。旧的 `VISUAL-PROOF-*` 已被 `acceptance/SPEC.md` 取代,待拆
 - review:`POSTPR.md`、`adr/0007-local-review-skill-as-review-gate.md`
 - 测试 / 合并:`INNER-LOOP-TESTING.md`、`adr/0013-inner-loop-on-ci.md`、`BEFORE-MERGE.md`、`COMMIT-FLOW.md`
 - issue 生命周期:`ISSUE-LIFECYCLE.md`
