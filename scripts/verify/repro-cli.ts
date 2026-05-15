@@ -3,24 +3,15 @@
 // CLI 入口:read spec → 准备 baseline worktree → 跑 repro-runner → 可选 recordGif → 写 ReproResult JSON。
 // 实现见 docs/plans/2026-05-15-suite-1-repro-framework.md Task 5。
 //
-// recordGif Phase 1 (verification-tooling.md) 还没实现,本期用 stub —— --no-gif 跑骨架,
-// 真要录 GIF 时调 stub 会显式抛错告诉你去做 Phase 1。
+// recordGif 由 verification-tooling.md Phase 1 提供;CI 上跑加 --no-gif 跳过录屏。
 
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveBaselineRef, prepareBaselineWorktree, tryJunctionNodeModules } from "./worktree-shell.ts";
 import { runRepro } from "./repro-runner.ts";
+import { recordGif } from "./record-gif.ts";
 import type { ReproSpec, ReproResult } from "./repro-types.ts";
-
-// === Phase 1 stub —— 真实实现来自 verification-tooling.md Phase 1 Task 3 ===
-interface RecordGifConfig { sceneScript: string; windowTitle: string; durationSec: number; outDir: string; }
-function recordGif(_cfg: RecordGifConfig): { mp4: string; gif: string } {
-  throw new Error(
-    "recordGif 还未实现(verification-tooling.md Phase 1 Task 3 待做)。" +
-    "暂时跑 repro-cli 时加 --no-gif,跑骨架。",
-  );
-}
 
 interface CliOpts { specPath: string; outDir: string; noGif: boolean; }
 
