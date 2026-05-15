@@ -1,0 +1,25 @@
+name: Setup repo (checkout + pnpm + install)
+description: 标准化的 repo 准备 —— checkout PR head sha + 装 pnpm/node + frozen install
+inputs:
+  ref:
+    description: 要 checkout 的 ref(默认 = github.event.pull_request.head.sha)
+    required: false
+    default: ${{ github.event.pull_request.head.sha }}
+  node-version:
+    description: Node 版本
+    required: false
+    default: '22'
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v5
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: 0          # review 标准 2 需要 git merge-base / merge-tree,要全历史
+    - uses: pnpm/action-setup@v5
+    - uses: actions/setup-node@v5
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+      shell: bash
