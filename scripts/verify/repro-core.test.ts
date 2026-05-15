@@ -51,19 +51,36 @@ test("mergeStepOutputs: 把多个 step 拼成单个 StepResult,exitCode 取最�
   assert.equal(merged.stdout, "a\nb\nc");
 });
 
-test("computeVerdict: before 期望成立 + after 期望成立 + 两侧期望不同 → pass", () => {
+test("computeVerdict: before 期望成立 + after 期望成立 + 互换 matcher 区分两侧 → pass", () => {
   const before: SideResult = { side: "before", steps: [], matcherOk: true, matcherReasons: [] };
   const after: SideResult = { side: "after", steps: [], matcherOk: true, matcherReasons: [] };
-  const r = computeVerdict(before, after,
-    { stdoutContains: ["通过"] }, { stdoutContains: ["deny"] });
+  const mergedBefore = okStep({ stdout: "通过 (无规则命中)" });
+  const mergedAfter = okStep({ stdout: "决策: deny  应改用: dayjs" });
+  const r = computeVerdict(
+    before, after, mergedBefore, mergedAfter,
+    { stdoutContains: ["通过"] }, { stdoutContains: ["deny"] },
+  );
   assert.equal(r.verdict, "pass");
 });
 
 test("computeVerdict: 任一侧 matcherOk 为 false → fail", () => {
   const before: SideResult = { side: "before", steps: [], matcherOk: false, matcherReasons: ["缺 通过"] };
   const after: SideResult = { side: "after", steps: [], matcherOk: true, matcherReasons: [] };
-  const r = computeVerdict(before, after, {}, {});
+  const mergedBefore = okStep();
+  const mergedAfter = okStep();
+  const r = computeVerdict(before, after, mergedBefore, mergedAfter, {}, {});
   assert.equal(r.verdict, "fail");
+});
+
+test("computeVerdict: 互换 matcher 双方都命中 → ambiguous", () => {
+  const before: SideResult = { side: "before", steps: [], matcherOk: true, matcherReasons: [] };
+  const after: SideResult = { side: "after", steps: [], matcherOk: true, matcherReasons: [] };
+  const sameOutput = okStep({ stdout: "X" });
+  const r = computeVerdict(
+    before, after, sameOutput, sameOutput,
+    { stdoutContains: ["X"] }, { stdoutContains: ["X"] },
+  );
+  assert.equal(r.verdict, "ambiguous");
 });
 
 test("buildWorktreeAddArgs / buildWorktreeRemoveArgs: 命令拼装", () => {

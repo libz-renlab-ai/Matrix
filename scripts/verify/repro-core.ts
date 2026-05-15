@@ -47,6 +47,8 @@ export function mergeStepOutputs(steps: StepResult[]): StepResult {
 export function computeVerdict(
   before: SideResult,
   after: SideResult,
+  mergedBefore: StepResult,
+  mergedAfter: StepResult,
   beforeMatcher: ResultMatcher,
   afterMatcher: ResultMatcher,
 ): { verdict: Verdict; verdictReason: string } {
@@ -56,22 +58,14 @@ export function computeVerdict(
     if (!after.matcherOk) why.push(`after 期望未达: ${after.matcherReasons.join("; ")}`);
     return { verdict: "fail", verdictReason: why.join(" | ") };
   }
-  // 两侧 matcherOk 都为 true,但要进一步 sanity:对换 matcher 结果应该 fail,
-  // 否则说明两侧输出几乎一样 → 对比未严谨成立,标 ambiguous。
-  // 本期占位:Task 4 重构后 computeVerdict 接收 mergedBefore/mergedAfter,届时真做互换 sanity。
-  const beforeMergedAfter = sideMatchesMerged(before, afterMatcher);
-  const afterMergedBefore = sideMatchesMerged(after, beforeMatcher);
-  if (beforeMergedAfter && afterMergedBefore) {
+  // 互换 matcher sanity:两侧 matcherOk 都 true,但若 before 的输出也命中 after 的期望
+  // 且 after 的输出也命中 before 的期望,说明两侧输出几乎一样 → 对比未严谨成立,标 ambiguous。
+  const beforeUnderAfter = evalMatcher(mergedBefore, afterMatcher);
+  const afterUnderBefore = evalMatcher(mergedAfter, beforeMatcher);
+  if (beforeUnderAfter.ok && afterUnderBefore.ok) {
     return { verdict: "ambiguous", verdictReason: "before 也命中了 after 的期望,且 after 也命中了 before 的期望 —— 对比未严谨成立" };
   }
-  return { verdict: "pass", verdictReason: "before 与 after 期望均成立,且对比严谨" };
-}
-
-function sideMatchesMerged(side: SideResult, m: ResultMatcher): boolean {
-  // 占位:Task 4 中 runner 会把 mergedStep 通过另一个签名的 computeVerdict 传入。
-  // 本函数为占位 —— 现在覆盖不到 ambiguous case。
-  void side; void m;
-  return false;
+  return { verdict: "pass", verdictReason: "before 与 after 期望均成立,且互换 matcher 后对比仍区分两侧" };
 }
 
 export function buildWorktreeAddArgs(path: string, ref: string): string[] {
