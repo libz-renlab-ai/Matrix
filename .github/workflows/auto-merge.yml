@@ -28,9 +28,15 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
+      # setup-node@v5 默认 package-manager-cache=true,看到 pnpm-lock.yaml 就找
+      # pnpm 来确定 cache 目录;所以 pnpm/action-setup 必须先于 setup-node。
+      # PR #7 dogfood 揭示的第 4 个 bug(无 pnpm → setup-node 报 'Unable to
+      # locate executable file: pnpm')。
+      - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
+          cache: pnpm
 
       - name: Resolve PR number from workflow_run
         id: pr
