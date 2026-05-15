@@ -1,0 +1,116 @@
+name: Auto-merge (远程 review 通过 → 自动 squash 合主分支)
+
+# workflow_run 链式触发:pr-review.yml 跑完 → 本 workflow 启动 →
+# 调 scripts/automerge/can-auto-merge.ts 门控 → 通过则 gh pr merge --squash --delete-branch。
+# 详细见 docs/plans/2026-05-15-auto-merge.md。
+
+on:
+  workflow_run:
+    workflows: ["PR Review (远程 CC 自动评审)"]
+    types: [completed]
+
+permissions:
+  contents: write       # squash merge 落 commit 到 main
+  pull-requests: write  # 关 PR、删 branch、写 comment
+
+# 同 PR 重入兜底:同 head SHA 只跑一次
+concurrency:
+  group: auto-merge-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate-and-merge:
+    # 仅在 pr-review 成功完成 + 是 pull_request 触发的情况下运行
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Resolve PR number from workflow_run
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          # workflow_run event 不直接给 PR number,要从 head_branch 反查
+          PR_NUMBER=$(gh pr list --head "${{ github.event.workflow_run.head_branch }}" \
+            --state open --json number --jq '.[0].number // empty')
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "::warning::找不到 head_branch=${{ github.event.workflow_run.head_branch }} 的 open PR;退出"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "pr=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "找到 PR #$PR_NUMBER"
+
+      - name: Snapshot PR
+        if: steps.pr.outputs.skip != 'true'
+        id: snap
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          PR=${{ steps.pr.outputs.pr }}
+          gh pr view "$PR" --json number,baseRefName,isDraft,body,labels,state,mergeable,headRepository,headRepositoryOwner > /tmp/pr.json
+          # review/verdict commit status
+          STATUS=$(gh api "repos/${{ github.repository }}/commits/${{ github.event.workflow_run.head_sha }}/statuses" \
+            --jq '[.[] | select(.context=="review/verdict")][0].state // "missing"')
+          REPO_OWNER='${{ github.repository_owner }}'
+          jq --arg verdict "$STATUS" --arg owner "$REPO_OWNER" '. + {
+            reviewVerdictState: $verdict,
+            isFromInternalRepo: (.headRepositoryOwner.login == $owner),
+            labels: [.labels[].name]
+          }' /tmp/pr.json > /tmp/snapshot.json
+          cat /tmp/snapshot.json
+
+      - name: Decide
+        if: steps.pr.outputs.skip != 'true'
+        id: decide
+        shell: bash
+        run: |
+          set +e
+          npx tsx -e "
+            import {canAutoMerge} from './scripts/automerge/can-auto-merge.ts';
+            import {readFileSync, writeFileSync} from 'node:fs';
+            const snap = JSON.parse(readFileSync('/tmp/snapshot.json', 'utf-8'));
+            const r = canAutoMerge(snap);
+            writeFileSync('/tmp/decision.json', JSON.stringify(r, null, 2));
+            console.log(JSON.stringify(r, null, 2));
+            process.exit(r.merge ? 0 : 78);
+          "
+          ec=$?
+          set -e
+          if [[ $ec -eq 0 ]]; then
+            echo "merge=true" >> "$GITHUB_OUTPUT"
+          elif [[ $ec -eq 78 ]]; then
+            echo "merge=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::canAutoMerge 评估异常 (exit=$ec)"
+            exit $ec
+          fi
+
+      - name: Merge
+        if: steps.decide.outputs.merge == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=${{ steps.pr.outputs.pr }}
+          gh pr merge "$PR" --squash --delete-branch
+          gh pr comment "$PR" --body "🤖 远程 review 通过 → 已自动 squash 合并到 main(\`auto-merge.yml\`)。"
+
+      - name: Skip note
+        if: steps.decide.outputs.merge == 'false' && steps.pr.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          PR=${{ steps.pr.outputs.pr }}
+          REASON=$(jq -r .reason /tmp/decision.json)
+          gh pr comment "$PR" --body "🤖 auto-merge 跳过 —— 原因: $REASON"
+          echo "skipped: $REASON"
