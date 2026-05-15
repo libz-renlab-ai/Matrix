@@ -26,40 +26,69 @@ jobs:
     outputs:
       specs: ${{ steps.list.outputs.specs }}
       skipReproReason: ${{ steps.list.outputs.skipReason }}
+      excludedSpecs: ${{ steps.list.outputs.excludedSpecs }}
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-      - id: list
+      # skip-repro label 是「PR 级显式豁免」,优先于 spec.ci.skip(spec 级豁免)。
+      # 标签命中 → 不必装 pnpm/node 跑 list-ci-specs,直接早退。
+      - id: label-shortcut
         shell: bash
         env:
           PR_LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
-          # 显式豁免 (A): PR 带 skip-repro label
           if echo "$PR_LABELS" | jq -e '. | index("skip-repro")' >/dev/null; then
-            echo "specs=[]" >> "$GITHUB_OUTPUT"
-            echo "skipReason=skip-repro label" >> "$GITHUB_OUTPUT"
+            echo "hit=true" >> "$GITHUB_OUTPUT"
             echo "::notice::PR 带 skip-repro label —— 跳过 repro 检查"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
+      # 没命中 skip-repro label,装依赖跑 list-ci-specs.ts 读 spec.ci.skip 分桶。
+      # (要装 pnpm/node 是因为 spec 是 .ts,需要 tsx + 解析它的 import)
+      - if: steps.label-shortcut.outputs.hit != 'true'
+        uses: ./.github/actions/setup-repo
+      - id: list
+        shell: bash
+        env:
+          LABEL_HIT: ${{ steps.label-shortcut.outputs.hit }}
+        run: |
+          set -euo pipefail
+          if [[ "$LABEL_HIT" == "true" ]]; then
+            echo 'specs=[]' >> "$GITHUB_OUTPUT"
+            echo 'excludedSpecs=[]' >> "$GITHUB_OUTPUT"
+            echo 'skipReason=skip-repro label' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # 列 fixtures/repro-specs/*.ts(排除 README/index/共享文件)
-          if [[ ! -d fixtures/repro-specs ]]; then
-            echo "specs=[]" >> "$GITHUB_OUTPUT"
-            echo "skipReason=no-repro-specs-dir" >> "$GITHUB_OUTPUT"
-            echo "::warning::fixtures/repro-specs 目录不存在 —— bootstrap 期豁免,跳过 repro 检查"
-            exit 0
+          # list-ci-specs.ts 输出形如 {"included":[...],"excluded":[{...}],"note":"..."}
+          payload=$(npx tsx scripts/verify/list-ci-specs.ts)
+          echo "list-ci-specs raw: $payload"
+          included=$(echo "$payload" | jq -c '.included')
+          excluded=$(echo "$payload" | jq -c '.excluded')
+          note=$(echo "$payload" | jq -r '.note // ""')
+          echo "specs=$included" >> "$GITHUB_OUTPUT"
+          echo "excludedSpecs=$excluded" >> "$GITHUB_OUTPUT"
+          # 决定 skipReason —— 仅在 included 为空时才填,否则保持空(repro 会真跑)
+          incl_count=$(echo "$included" | jq 'length')
+          excl_count=$(echo "$excluded" | jq 'length')
+          if [[ "$incl_count" == "0" ]]; then
+            if [[ -n "$note" ]]; then
+              reason="$note"
+            elif [[ "$excl_count" == "0" ]]; then
+              reason="no-specs-discovered"
+            else
+              # 全部 spec 都被 ci.skip 标记 → 把它们的 reason 拼起来
+              reason="all-specs-ci-skip: $(echo "$excluded" | jq -r 'map(.file + " (\(.reason))") | join("; ")')"
+            fi
+            echo "skipReason=$reason" >> "$GITHUB_OUTPUT"
+            echo "::warning::没有需要跑的 spec ($reason)"
+          else
+            echo 'skipReason=' >> "$GITHUB_OUTPUT"
+            echo "找到 included spec: $included"
+            if [[ "$excl_count" != "0" ]]; then
+              echo "::notice::被豁免的 spec(ci.skip=true): $excluded"
+            fi
           fi
-          mapfile -t files < <(find fixtures/repro-specs -maxdepth 1 -name '*.ts' ! -name 'index.ts' | sort)
-          if [[ ${#files[@]} -eq 0 ]]; then
-            echo "specs=[]" >> "$GITHUB_OUTPUT"
-            echo "skipReason=empty-repro-specs-dir" >> "$GITHUB_OUTPUT"
-            echo "::warning::fixtures/repro-specs 为空 —— bootstrap 期豁免,跳过 repro 检查"
-            exit 0
-          fi
-          json=$(printf '%s\n' "${files[@]}" | jq -R . | jq -sc .)
-          echo "specs=$json" >> "$GITHUB_OUTPUT"
-          echo "skipReason=" >> "$GITHUB_OUTPUT"
-          echo "找到 spec: ${files[*]}"
 
   repro:
     needs: list-specs
@@ -131,21 +160,27 @@ jobs:
           REPRO_OUTCOME: ${{ needs.repro.result }}                # success / failure / skipped / cancelled
           TESTS_OUTCOME: ${{ needs.tests.result }}
           SKIP_REPRO_REASON: ${{ needs.list-specs.outputs.skipReproReason }}
+          EXCLUDED_SPECS: ${{ needs.list-specs.outputs.excludedSpecs }}
         run: |
           mkdir -p /tmp/agg
+          # 把 ci.skip 标记的 spec 渲成一段附注(给 repro_summary 用,让 verdict comment 显示):
+          excluded_note=""
+          if [[ -n "$EXCLUDED_SPECS" && "$EXCLUDED_SPECS" != "[]" ]]; then
+            excluded_note=" · 显式豁免: $(echo "$EXCLUDED_SPECS" | jq -r 'map(.file + " (\(.reason))") | join("; ")')"
+          fi
           # repro_ok 计算(三态豁免见安全前提):
           #   - REPRO_OUTCOME = success → ok
-          #   - REPRO_OUTCOME = skipped 且 SKIP_REPRO_REASON 非空 → ok(显式豁免:bootstrap / docs-only)
+          #   - REPRO_OUTCOME = skipped 且 SKIP_REPRO_REASON 非空 → ok(显式豁免:bootstrap / docs-only / all-ci-skip)
           #   - 其它 → 不 ok
           if [[ "$REPRO_OUTCOME" == "success" ]]; then
             repro_ok=true
-            repro_summary="verdict=pass (all specs)"
+            repro_summary="verdict=pass (all included specs)$excluded_note"
           elif [[ "$REPRO_OUTCOME" == "skipped" && -n "$SKIP_REPRO_REASON" ]]; then
             repro_ok=true
             repro_summary="豁免 — $SKIP_REPRO_REASON"
           else
             repro_ok=false
-            repro_summary="verdict=fail/missing (REPRO_OUTCOME=$REPRO_OUTCOME)"
+            repro_summary="verdict=fail/missing (REPRO_OUTCOME=$REPRO_OUTCOME)$excluded_note"
           fi
           if [[ "$TESTS_OUTCOME" == "success" ]]; then
             tests_ok=true
