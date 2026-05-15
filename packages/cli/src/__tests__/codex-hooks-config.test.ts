@@ -38,6 +38,15 @@ function findRepoRoot(): string {
 const repoRoot = findRepoRoot();
 const hooksJsonPath = path.join(repoRoot, ".codex", "hooks.json");
 
+// Matrix baseline 是 history-stripped fork(2026-05-14),没把 TeamBrain 的
+// .codex/ 目录(Codex CLI hook adapter,issue #290 范围)带过来。本测试套件
+// 来自上游,但 target 文件不存在,在 Matrix 上跑会 7 个全挂 ENOENT。
+//
+// 用 describe.skipIf 自适应:.codex/hooks.json 存在 → 测试激活(TeamBrain 路径);
+// 不存在 → 整个 describe block 跳过(Matrix 路径)。无须 Matrix 维护这套 fixture,
+// 也无须删测试丢上游 contract 文档。issue #3 Gap 2 收尾。
+const codexHooksExist = existsSync(hooksJsonPath);
+
 interface CodexHookEntry {
   matcher?: string;
   hooks: Array<{ type: string; command: string; timeout?: number }>;
@@ -50,7 +59,7 @@ function loadConfig(): CodexHooksConfig {
   return JSON.parse(readFileSync(hooksJsonPath, "utf8")) as CodexHooksConfig;
 }
 
-describe(".codex/hooks.json (issue #290)", () => {
+describe.skipIf(!codexHooksExist)(".codex/hooks.json (issue #290)", () => {
   it("registers SessionStart, PreToolUse, and Stop events", () => {
     const cfg = loadConfig();
     expect(Object.keys(cfg.hooks).sort()).toEqual([
