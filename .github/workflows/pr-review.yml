@@ -70,6 +70,9 @@ jobs:
       matrix:
         spec: ${{ fromJson(needs.list-specs.outputs.specs) }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: ./.github/actions/setup-repo
       - name: Build teamagent (有的 spec 跑 dist/bin.js)
         run: pnpm --filter teamagent build
@@ -89,6 +92,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.pull_request.head.repo.full_name == github.repository
     steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0          # review 标准 2 需要 git merge-base / merge-tree,要全历史
       - uses: ./.github/actions/setup-repo
       - name: pnpm test
         run: pnpm test
@@ -108,6 +115,9 @@ jobs:
     if: always() && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: ./.github/actions/setup-repo
       - name: Download all repro artifacts
         uses: actions/download-artifact@v4
