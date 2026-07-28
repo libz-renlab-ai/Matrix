@@ -1,9 +1,9 @@
 {
   "version": "0.11.1",
   "sha": "c758c5c563114608d201a1ed765bc00426002c2e",
-  "releasedAt": "2026-07-28T13:30:20Z",
+  "releasedAt": "2026-07-28T19:07:32Z",
   "tarball": "https://github.com/libz-renlab-ai/Matrix/archive/refs/heads/release.tar.gz",
-  "generatedBy": "release-branch.yml@30363736948",
+  "generatedBy": "release-branch.yml@30390527167",
   "pr_number": 6,
   "pr_creator_login": "libz-renlab-ai",
   "merged_at": "2026-05-15T09:00:07Z"
